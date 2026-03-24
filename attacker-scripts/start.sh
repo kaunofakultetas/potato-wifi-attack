@@ -10,16 +10,18 @@ echo "4. Exit"
 
 read -p "Choice: " choice
 
+source ./.venv/bin/activate
+
 case $choice in
     1)
-        # Run the venv python directly and point to the script
-        "$SCRIPT_DIR/venv/bin/python3" "$SCRIPT_DIR/open_wifi/run.py"
+        # run ./open_wifi/run.sh
+        cd "$SCRIPT_DIR/open_wifi" && "$SCRIPT_DIR/open_wifi/run.sh"
         ;;
     2)
-        "$SCRIPT_DIR/venv/bin/python3" "$SCRIPT_DIR/wpa2/run.py"
+        cd "$SCRIPT_DIR/wpa2" && "$SCRIPT_DIR/wpa2/run.sh"
         ;;
     3)
-        "$SCRIPT_DIR/venv/bin/python3" "$SCRIPT_DIR/evil_twin/run.py"
+        echo "wip"
         ;;
     4)
         exit 0
@@ -27,4 +29,4 @@ case $choice in
     *)
         echo "Invalid choice"
         ;;
-en
+esac

@@ -1,0 +1,3 @@
+[submodule "attacker-scripts/wpa2/dot11decrypt"]
+	path = attacker-scripts/wpa2/dot11decrypt
+	url = https://github.com/mfontanini/dot11decrypt

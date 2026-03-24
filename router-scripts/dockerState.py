@@ -15,8 +15,7 @@ genericConfig: list[dict[str, str]] = [
     {"RASPI_MONITOR_ENABLED": "true"},
     {"RASPAP_WEBGUI_PORT": "8081"},
     {"RASPAP_WEBGUI_USER": "admin"},
-    {"RASPAP_WEBGUI_PASS": "vuknf123"},
-    {"RASPAP_COUNTRY": "LT"},
+    {"RASPAP_WEBGUI_PASS": "vuknf123"}
 ]
 
 
@@ -93,7 +92,7 @@ class DockerRunner:
             print(f"[W] Warning: Source config {source_dnsmasq} not found!")
 
         # Start docker container
-        self.docker_client.compose.up(detach=True)
+        self.docker_client.compose.up(detach=True, force_recreate=True)
         self.current_state = state
 
         print("[!] Router started.")
