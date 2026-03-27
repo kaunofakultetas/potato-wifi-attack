@@ -2,10 +2,11 @@ from flask import Flask, request, render_template_string
 import threading
 import werkzeug.serving
 import logging
+import socket
+import time
 
-# Disable Flask's default logging to keep the console clean for your prints
-log = logging.getLogger("werkzeug")
-log.setLevel(logging.ERROR)
+# Keep the console clean
+logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
 
 class VulnerableWebServer:
@@ -15,82 +16,50 @@ class VulnerableWebServer:
         self.server = None
         self.thread = None
 
-        # Template for the simulated login
-        self.login_template = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>University Network - Login</title>
-            <style>
-                body { font-family: sans-serif; display: flex; justify-content: center; padding-top: 50px; background: #f0f2f5; }
-                .card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-                input { display: block; margin: 10px 0; padding: 8px; width: 200px; }
-                button { width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-            </style>
-        </head>
-        <body>
-            <div class="card">
-                <h2>Campus Wi-Fi</h2>
-                <p>Please sign in to continue</p>
-                <form method="POST" action="/login">
-                    <input type="text" name="username" placeholder="Username" required>
-                    <input type="password" name="password" placeholder="Password" required>
-                    <button type="submit">Sign In</button>
-                </form>
-            </div>
-        </body>
-        </html>
-        """
-
         @self.app.route("/")
         def index():
-            return render_template_string(self.login_template)
+            return "<h2>Campus Wi-Fi</h2><form method='POST' action='/login'><input name='u'><input type='password' name='p'><button>Sign In</button></form>"
 
         @self.app.route("/login", methods=["POST"])
         def login():
-            # In a real vulnerability demo, Wireshark will see these keys/values
-            # because they are sent in an unencrypted HTTP POST body.
             captured_data = request.form.to_dict()
-
-            # Print to terminal so you can verify the "attack" worked
-            print(f"\n[!] DEMO LOG: Received Submission: {captured_data}")
-
-            return """
-            <div style="text-align:center; margin-top:50px;">
-                <h2 style="color: green;">Successfully Connected!</h2>
-                <p>You are now authorized to use the campus network.</p>
-            </div>
-            """
+            print(f"\n[!] data: {captured_data}")
+            return "<h2>Connected!</h2>"
 
     def start(self):
-        """Starts the server in a background thread."""
+        """Starts the server with socket options to prevent hanging."""
         if self.thread is not None:
             return
 
-        self.server = werkzeug.serving.make_server("0.0.0.0", self.port, self.app)
+        self.server = werkzeug.serving.make_server(
+            "0.0.0.0", self.port, self.app, threaded=True
+        )
+
+        self.server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
         self.thread = threading.Thread(target=self.server.serve_forever)
         self.thread.daemon = True
         self.thread.start()
-        print(f"[*] Vulnerable Web Server started on port {self.port} (HTTP)")
+        print(f"[*] Server started on port {self.port}")
 
     def stop(self):
-        """Stops the server."""
+        """Forcefully kills the server so the script can continue."""
         if self.server:
-            self.server.shutdown()
-            self.thread.join()
+            print("[*] Stopping Vulnerable Web Server...")
+
+            try:
+                self.server.socket.close()
+            except:
+                pass
+
+            shutdown_thread = threading.Thread(target=self.server.shutdown)
+            shutdown_thread.start()
+
+            if self.thread:
+                self.thread.join(timeout=1.0)
+
             self.server = None
             self.thread = None
-            print("[*] Vulnerable Web Server stopped.")
 
-
-if __name__ == "__main__":
-    # For standalone testing
-    import time
-
-    server = VulnerableWebServer()
-    server.start()
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        server.stop()
+            time.sleep(0.5)
+            print("[*] Server stopped and port cleared.")

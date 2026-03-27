@@ -19,7 +19,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     web_demo = VulnerableWebServer(port=8080)
-    web_demo.start()
 
     runner = DockerRunner("/home/berry15/Desktop/wifi-simuliacija/raspap")
 
@@ -58,9 +57,11 @@ if __name__ == "__main__":
 
                     print(f"[*] Switching to: {current_scenario.name}")
 
+                    web_demo.stop()
                     if current_scenario == RouterState.OFFLINE:
                         runner.stop_router()
                     else:
+                        web_demo.start()
                         runner.start_router(current_scenario)
 
                     rinterface.setState(led_enum_member)
@@ -84,10 +85,13 @@ if __name__ == "__main__":
 
             if choice == "1":
                 runner.start_router(RouterState.SCENARIO_OPEN_WIFI)
+                web_demo.start()
             elif choice == "2":
                 runner.start_router(RouterState.SCENARIO_WPA2)
+                web_demo.start()
             elif choice == "3":
                 runner.start_router(RouterState.SCENARIO_EVIL_TWIN)
+                web_demo.start()
             else:
                 print("Invalid choice. Exiting.")
                 exit(1)
