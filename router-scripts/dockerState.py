@@ -15,7 +15,7 @@ genericConfig: list[dict[str, str]] = [
     {"RASPI_MONITOR_ENABLED": "true"},
     {"RASPAP_WEBGUI_PORT": "8081"},
     {"RASPAP_WEBGUI_USER": "admin"},
-    {"RASPAP_WEBGUI_PASS": "vuknf123"}
+    {"RASPAP_WEBGUI_PASS": "routeradmin123"},
 ]
 
 
