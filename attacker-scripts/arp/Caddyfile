@@ -1,0 +1,83 @@
+{
+	auto_https off
+	order replace after encode
+	order dump_body before reverse_proxy
+
+	# Default logger captures output from dump_body and other runtime logs.
+	log {
+		output stdout
+		format json
+		level INFO
+	}
+}
+
+(accesslog) {
+	log {
+		output stdout
+		format json
+	}
+}
+
+:80 {
+	import accesslog
+	dump_body
+	encode gzip
+
+	replace stream {
+		https:// http://
+	}
+
+	reverse_proxy {http.request.host}:443 {
+		header_up Host {http.request.host}
+		header_up -Accept-Encoding
+		header_down Location "https://" "http://"
+		header_down -Strict-Transport-Security
+		header_down -Content-Security-Policy
+		transport http {
+			tls
+			tls_server_name {http.request.host}
+			tls_insecure_skip_verify
+		}
+
+		@error status 502
+		handle_response @error {
+			reverse_proxy {http.request.host}:80 {
+				header_up Host {http.request.host}
+				header_up -Accept-Encoding
+				header_down Location "https://" "http://"
+				header_down -Strict-Transport-Security
+				header_down -Content-Security-Policy
+			}
+		}
+	}
+}
+
+:443 {
+	import accesslog
+	dump_body
+
+	tls {
+		on_demand
+		issuer internal
+	}
+
+	reverse_proxy {http.request.host}:443 {
+		header_up Host {http.request.host}
+		header_down -Strict-Transport-Security
+		header_down -Content-Security-Policy
+		transport http {
+			tls
+			tls_server_name {http.request.host}
+			tls_insecure_skip_verify
+		}
+
+		@error status 502
+		handle_response @error {
+			reverse_proxy {http.request.host}:80 {
+				header_up Host {http.request.host}
+				header_down -Strict-Transport-Security
+				header_down -Content-Security-Policy
+			}
+		}
+	}
+}

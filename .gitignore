@@ -7,3 +7,4 @@ build
 d11decrypt
 handshake_demo*
 scan_results*
+dot11decrypt
