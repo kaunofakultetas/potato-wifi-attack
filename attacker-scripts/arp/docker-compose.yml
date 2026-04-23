@@ -14,10 +14,5 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.dns
-    # Host port 5300 because :53 is usually taken on Kali by
-    # systemd-resolved (127.0.0.53) or NetworkManager's dnsmasq.
-    # iptables REDIRECT in run.sh rewrites victim DNS to this port.
-    ports:
-      - "5300:53/udp"
-      - "5300:53/tcp"
+    network_mode: host
     restart: unless-stopped

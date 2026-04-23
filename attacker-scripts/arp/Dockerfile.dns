@@ -1,6 +1,6 @@
 FROM alpine:3.21
+
 RUN apk add --no-cache dnsmasq
-ENTRYPOINT ["dnsmasq", "-k", "--no-resolv", \
-    "--filter-rr=HTTPS", "--filter-rr=SVCB", "--filter-rr=AAAA", \
-    "--server=1.1.1.1", "--server=8.8.8.8", \
-    "--listen-address=0.0.0.0"]
+
+# Exec form must be a single line without backslashes
+ENTRYPOINT ["dnsmasq", "-k", "--no-resolv", "--log-facility=-", "--log-queries", "--port=5300", "--cache-size=1000", "--filter-rr=HTTPS", "--filter-rr=SVCB", "--filter-rr=AAAA", "--server=1.1.1.1", "--server=8.8.8.8"]

