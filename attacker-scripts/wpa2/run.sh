@@ -29,12 +29,12 @@ echo -e "\033[92m[+] dot11decrypt running with PID $DECRYPT_PID\033[0m"
 
 # Start wifi password crack demo
 WORDLIST="Top204Thousand-WPA-probable-v2.txt"
-python crack_pass.py --WIFI_INTERFACE $WIFI_INTERFACE --bssid $WIFI_BSSID --channel 6 --wordlist $WORDLIST
+python crack_pass.py --interface $WIFI_INTERFACE --bssid $WIFI_BSSID --channel 6 --wordlist $WORDLIST
 
 read -p "Press Enter to start traffic view..."
 
 # Start intercepted traffic view
-sudo python3 ../open_wifi/main.py --WIFI_INTERFACE tap0
+sudo python3 ../open_wifi/main.py --interface tap0
 
 # input and shutdown for now
 read -p "Press Enter to exit..."
